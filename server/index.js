@@ -2,10 +2,10 @@
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
-const cors = require("cors"); // Add this line
+const cors = require("cors");
 
 const app = express();
-app.use(cors()); // Add this line
+app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -15,63 +15,60 @@ const io = new Server(server, {
 });
 
 let drawnNumbers = [];
-const maxNumber = 75;
-const winners = [];
+const BINGO_RANGE = 75; // Standard 75-ball bingo
+const patterns = ["line", "full-house"]; // Added pattern recognition
+let currentPattern = "line"; // Start with simple line pattern
 let gameActive = true;
 
+// Generate random Bingo number (1-75)
 const drawNumber = () => {
-  if (!gameActive) return;
+  if (!gameActive || drawnNumbers.length >= BINGO_RANGE) return;
 
   let number;
   do {
-    number = Math.floor(Math.random() * maxNumber) + 1;
+    number = Math.floor(Math.random() * BINGO_RANGE) + 1;
   } while (drawnNumbers.includes(number));
 
   drawnNumbers.push(number);
   io.emit("number-drawn", number);
+
+  // Switch pattern after 45 numbers drawn
+  if (drawnNumbers.length === 45) {
+    currentPattern = "full-house";
+    io.emit("pattern-change", "full-house");
+  }
 };
 
-setInterval(drawNumber, 5000);
+// Standard Bingo letter-number associations
+const getBingoLetter = (number) => {
+  if (number <= 15) return "B";
+  if (number <= 30) return "I";
+  if (number <= 45) return "N";
+  if (number <= 60) return "G";
+  return "O";
+};
+
+setInterval(drawNumber, 3000); // Draw every 3 seconds
 
 io.on("connection", (socket) => {
-  console.log("A user connected");
-  socket.emit("drawn-numbers", { numbers: drawnNumbers, gameActive });
-  socket.emit("winner-list", winners);
-
-  socket.on("set-username", (username) => {
-    socket.username = username;
-    console.log(`${username} joined the game`);
-  });
-
-  socket.on("declare-winner", (username) => {
-    if (!winners.includes(username)) {
-      winners.push(username);
-      io.emit("new-winner", username);
-      io.emit("winner-list", winners);
-      console.log(`${username} won the game!`);
-    }
+  socket.emit("init-game", {
+    drawnNumbers,
+    gameActive,
+    currentPattern,
   });
 
   socket.on("restart-game", () => {
     drawnNumbers = [];
+    currentPattern = "line";
     gameActive = true;
-    io.emit("game-restarted");
-    console.log("Game was restarted");
+    io.emit("game-restart");
   });
 
   socket.on("disconnect", () => {
-    console.log(`${socket.username || "A user"} disconnected`);
+    console.log("User disconnected");
   });
 });
 
-app.get("/restart", (req, res) => {
-  drawnNumbers = [];
-  gameActive = true;
-  io.emit("game-restarted");
-  res.send("Game restarted");
-});
-
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+server.listen(3001, () => {
+  console.log("Bingo server running on port 3001");
 });
